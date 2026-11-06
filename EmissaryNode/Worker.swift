@@ -234,7 +234,11 @@ final class WorkerService: ObservableObject {
         defer { beat.cancel(); busy = false; status = running ? "Online - waiting for work" : "Stopped" }
         let started = Date()
         do {
-            let g = try await engine.generate(prompt: prompt, maxOutputTokens: 768, deadline: Date().addingTimeInterval(budget))
+            var g = try await engine.generate(prompt: prompt, maxOutputTokens: 768, deadline: Date().addingTimeInterval(budget))
+            if g.text.isEmpty, await engine.usingGPU, let m = models.current {
+                try await engine.load(path: m.url.path, gpu: false)
+                g = try await engine.generate(prompt: prompt, maxOutputTokens: 768, deadline: Date().addingTimeInterval(budget))
+            }
             guard !g.text.isEmpty else { throw LlamaEngineError.decodeFailed(-1) }
             let result: [String: Any] = [
                 "worker_identity": nodeId ?? "", "worker_version": workerVersion, "worker_hostname": nodeName,
@@ -265,8 +269,15 @@ final class WorkerService: ObservableObject {
         guard let m = models.current else { note("Choose a model first."); return }
         do {
             if !(await engine.isLoaded) { try await engine.load(path: m.url.path) }
-            let g = try await engine.generate(prompt: "In three sentences, explain why lunar dust is a problem for spacecraft.",
-                                              maxOutputTokens: 160, deadline: Date().addingTimeInterval(300))
+            let q = "In three sentences, explain why lunar dust is a problem for spacecraft."
+            var g = try await engine.generate(prompt: q, maxOutputTokens: 160, deadline: Date().addingTimeInterval(300))
+            note("Diagnostics: \(await engine.lastDiagnostics)")
+            if g.text.isEmpty {
+                note("Empty answer on the graphics chip - retrying on the processor (CPU) only...")
+                try await engine.load(path: m.url.path, gpu: false)
+                g = try await engine.generate(prompt: q, maxOutputTokens: 160, deadline: Date().addingTimeInterval(300))
+                note("Diagnostics (CPU): \(await engine.lastDiagnostics)")
+            }
             let tps = g.generationSeconds > 0 ? Double(g.outputTokens) / g.generationSeconds : 0
             note(String(format: "Benchmark: %d prompt tokens in %.1fs, %d output tokens at %.1f tok/s. Thermal %d.",
                         g.promptTokens, g.promptSeconds, g.outputTokens, tps, ProcessInfo.processInfo.thermalState.rawValue))
