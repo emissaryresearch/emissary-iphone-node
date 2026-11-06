@@ -1,0 +1,6 @@
+build/
+Payload/
+*.ipa
+llama.cpp/
+*.xcodeproj/
+EmissaryNode/Info.plist
