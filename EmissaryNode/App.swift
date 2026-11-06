@@ -37,6 +37,7 @@ struct ContentView: View {
                         Button("Test on this phone (try airplane mode)") { Task { await worker.benchmark() } }
                         Button("Remove model", role: .destructive) { models.remove() }
                     }
+                    Button("Use recommended model (Qwen2.5 1.5B)") { modelLink = ModelStore.defaultURL }
                     TextField("Model link (.gguf)", text: $modelLink).autocapitalization(.none).disableAutocorrection(true).font(.caption)
                     TextField("Expected SHA-256 (optional)", text: $expectedSHA).autocapitalization(.none).font(.caption)
                     Button(downloading ? "Downloading…" : "Download model") {

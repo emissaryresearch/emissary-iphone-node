@@ -21,8 +21,8 @@ final class ModelStore: ObservableObject {
         return f
     }()
 
-    /// Official Liquid AI release (license lfm1.0), about 229 MB. Any other GGUF link can be entered.
-    static let defaultURL = "https://huggingface.co/LiquidAI/LFM2-350M-GGUF/resolve/main/LFM2-350M-Q4_K_M.gguf"
+    /// Qwen2.5 1.5B Instruct (Apache-2.0), about 986 MB - clear, on-topic answers. Any other GGUF link can be entered.
+    static let defaultURL = "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf"
 
     @Published var current: LocalModel? = {
         guard let d = UserDefaults.standard.data(forKey: "currentModel"),
