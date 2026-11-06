@@ -39,12 +39,17 @@ actor LlamaEngine {
 
     init() { llama_backend_init() }
 
-    func load(path: String) throws {
+    private(set) var usingGPU = true
+    private(set) var lastDiagnostics = ""
+
+    func load(path: String, gpu: Bool = true) throws {
         unload()
         var mparams = llama_model_default_params()
+        if !gpu { mparams.n_gpu_layers = 0 }
         #if targetEnvironment(simulator)
         mparams.n_gpu_layers = 0
         #endif
+        usingGPU = gpu
         guard let m = llama_model_load_from_file(path, mparams) else { throw LlamaEngineError.modelLoadFailed(path) }
         let threads = Int32(max(1, min(4, ProcessInfo.processInfo.activeProcessorCount - 2)))
         var cparams = llama_context_default_params()
@@ -137,6 +142,8 @@ actor LlamaEngine {
         llama_memory_clear(llama_get_memory(ctx), true)
 
         let budget = Int(Self.contextTokens) - maxOutputTokens - 8
+        let templated = (model.flatMap { llama_model_chat_template($0, nil) }) != nil
+        lastDiagnostics = "build=3 gpu=\(usingGPU) plain=\(plain) model-template=\(templated)"
         var tokens = tokenize(formatted(rawPrompt, plain: plain))
         var truncated = false
         if tokens.count > budget {
@@ -192,6 +199,7 @@ actor LlamaEngine {
         var produced = 0
         while produced < maxOutputTokens && !cancelled && Date() < deadline {
             let tok = llama_sampler_sample(sampler, ctx, -1)
+            if produced == 0 { lastDiagnostics += " first-token=\(tok) eog=\(llama_vocab_is_eog(v, tok))" }
             if llama_vocab_is_eog(v, tok) { break }
             out.append(contentsOf: piece(tok))
             produced += 1
