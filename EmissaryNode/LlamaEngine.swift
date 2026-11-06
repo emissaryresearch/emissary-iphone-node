@@ -73,9 +73,14 @@ actor LlamaEngine {
 
     func cancel() { cancelled = true }
 
-    /// Formats `userText` with the model's own chat template (falls back to plain text).
+    /// ChatML layout (used by LFM2/Qwen-style models) when llama.cpp cannot apply the model's template.
+    private func chatML(_ userText: String) -> String {
+        "<|im_start|>user\n\(userText)<|im_end|>\n<|im_start|>assistant\n"
+    }
+
+    /// Formats `userText` with the model's own chat template (falls back to ChatML).
     private func applyTemplate(_ userText: String) -> String {
-        guard let m = model, let tmpl = llama_model_chat_template(m, nil) else { return userText }
+        guard let m = model, let tmpl = llama_model_chat_template(m, nil) else { return chatML(userText) }
         let role = strdup("user"), content = strdup(userText)
         defer { free(role); free(content) }
         var msg = llama_chat_message(role: role, content: content)
@@ -83,11 +88,15 @@ actor LlamaEngine {
         for _ in 0..<2 {
             var out = [CChar](repeating: 0, count: Int(size))
             let n = llama_chat_apply_template(tmpl, &msg, 1, true, &out, size)
-            if n < 0 { return userText }
+            if n < 0 { return chatML(userText) }
             if n <= size { return String(cString: out) }
             size = n + 1
         }
-        return userText
+        return chatML(userText)
+    }
+
+    private func formatted(_ text: String, plain: Bool) -> String {
+        plain ? "Question: \(text)\nAnswer:" : applyTemplate(text)
     }
 
     private func tokenize(_ text: String) -> [llama_token] {
@@ -114,13 +123,21 @@ actor LlamaEngine {
     }
 
     /// Runs the model on this device. The prompt is trimmed (head + tail kept) if it does not fit.
-    func generate(prompt rawPrompt: String, maxOutputTokens: Int, deadline: Date) throws -> GenerationResult {
+    func generate(prompt: String, maxOutputTokens: Int, deadline: Date) throws -> GenerationResult {
+        let first = try generateOnce(prompt: prompt, maxOutputTokens: maxOutputTokens, deadline: deadline, plain: false)
+        if !first.text.isEmpty || Date() > deadline { return first }
+        // The model ended immediately with the chat format: retry once as a plain question/answer prompt.
+        return try generateOnce(prompt: prompt, maxOutputTokens: maxOutputTokens, deadline: deadline, plain: true)
+    }
+
+    private func generateOnce(prompt rawPrompt: String, maxOutputTokens: Int, deadline: Date, plain: Bool) throws -> GenerationResult {
+
         guard let ctx = context, let v = vocab else { throw LlamaEngineError.notLoaded }
         cancelled = false
         llama_memory_clear(llama_get_memory(ctx), true)
 
         let budget = Int(Self.contextTokens) - maxOutputTokens - 8
-        var tokens = tokenize(applyTemplate(rawPrompt))
+        var tokens = tokenize(formatted(rawPrompt, plain: plain))
         var truncated = false
         if tokens.count > budget {
             // Keep the instructions at the start and the question at the end.
@@ -130,7 +147,7 @@ actor LlamaEngine {
             var keep = max(400, Int(Double(chars.count) * Double(budget) / Double(tokens.count)) - marker.count)
             while true {
                 let head = String(chars.prefix(keep * 6 / 10)), tail = String(chars.suffix(keep * 4 / 10))
-                tokens = tokenize(applyTemplate(head + marker + tail))
+                tokens = tokenize(formatted(head + marker + tail, plain: plain))
                 if tokens.count <= budget || keep <= 400 { break }
                 keep = keep * 85 / 100
             }
