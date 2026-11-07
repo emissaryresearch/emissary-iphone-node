@@ -50,8 +50,8 @@ struct ContentView: View {
                     }.disabled(downloading)
                     if !models.progress.isEmpty { Text(models.progress).font(.footnote) }
                 }
-                Section(header: Text("2 · Connect to EMISSARY (Tailscale must be on)")) {
-                    TextField("Supervisor address", text: $worker.supervisorURL).autocapitalization(.none).disableAutocorrection(true)
+                Section(header: Text(Brand.connectHeader)) {
+                    TextField("Supervisor address (https://...ts.net)", text: $worker.supervisorURL).autocapitalization(.none).disableAutocorrection(true)
                     TextField("Name for this phone", text: $worker.nodeName).autocapitalization(.none)
                     if let id = worker.nodeId {
                         Text("Registered as \(id)").font(.footnote)
@@ -59,13 +59,13 @@ struct ContentView: View {
                     } else {
                         Button("Register with the Supervisor") { Task { await worker.register() } }
                     }
-                    Text("Then on the MSI approve it for research, the same way as the other Workers.").font(.footnote).foregroundColor(.secondary)
+                    Text(Brand.approveHint).font(.footnote).foregroundColor(.secondary)
                 }
                 Section(header: Text("Activity")) {
                     ForEach(worker.log, id: \.self) { Text($0).font(.caption2) }
                 }
             }
-            .navigationTitle("EMISSARY Node")
+            .navigationTitle(Brand.title)
         }
         .navigationViewStyle(.stack)
     }

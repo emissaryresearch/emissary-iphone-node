@@ -102,8 +102,8 @@ struct SupervisorClient {
 // MARK: - The worker loop
 @MainActor
 final class WorkerService: ObservableObject {
-    @Published var supervisorURL: String = UserDefaults.standard.string(forKey: "supervisorURL") ?? "https://msi.tail21a0f7.ts.net"
-    @Published var nodeName: String = UserDefaults.standard.string(forKey: "nodeName") ?? "iphone13-node"
+    @Published var supervisorURL: String = UserDefaults.standard.string(forKey: "supervisorURL") ?? Brand.defaultSupervisor
+    @Published var nodeName: String = UserDefaults.standard.string(forKey: "nodeName") ?? Brand.defaultNodeName
     @Published var nodeId: String? = UserDefaults.standard.string(forKey: "nodeId")
     @Published var running = false
     @Published var busy = false
@@ -153,7 +153,7 @@ final class WorkerService: ObservableObject {
         nodeId = id
         UserDefaults.standard.set(id, forKey: "nodeId")
         if let tok = r["worker_token"] as? String { Keychain.set(tok, "worker_token") }
-        note("Registered as \(id). Now approve it on the MSI (authorize_research_worker.py).")
+        note("Registered as \(id). \(Brand.approveHint)")
     }
 
     func forget() {

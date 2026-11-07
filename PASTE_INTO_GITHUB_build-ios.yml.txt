@@ -1,0 +1,70 @@
+# Builds the EMISSARY iPhone Node app (unsigned .ipa) on GitHub's free Mac machines.
+# Install it on the iPhone with AltStore from the Windows MSI (signs it with your free Apple ID).
+name: Build iPhone app
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read pinned llama.cpp commit
+        id: pin
+        run: echo "sha=$(cat LLAMA_CPP_COMMIT | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+      - name: Cache the llama.cpp iOS framework
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: llama.cpp/build-apple/llama.xcframework
+          key: llama-xcframework-ios-${{ steps.pin.outputs.sha }}
+      - name: Get llama.cpp (pinned commit)
+        run: |
+          mkdir -p llama.cpp && cd llama.cpp
+          git init -q && git remote add origin https://github.com/ggml-org/llama.cpp
+          git fetch -q --depth 1 origin ${{ steps.pin.outputs.sha }} && git checkout -q FETCH_HEAD
+      - name: Build llama.cpp for iPhone (first run ~20 min, then cached)
+        if: steps.cache.outputs.cache-hit != 'true'
+        working-directory: llama.cpp
+        run: ./build-xcframework.sh ios-device
+      - name: Generate the Xcode project
+        run: brew install xcodegen && xcodegen generate
+      - name: Build the app (unsigned - AltStore signs it)
+        run: |
+          xcodebuild -project EmissaryNode.xcodeproj -scheme EmissaryNode -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tail -50
+      - name: Package .ipa
+        run: |
+          mkdir -p Payload && cp -R build/Build/Products/Release-iphoneos/EmissaryNode.app Payload/
+          zip -qry EmissaryNode.ipa Payload
+          shasum -a 256 EmissaryNode.ipa | tee EmissaryNode.ipa.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EmissaryNode-ipa
+          path: |
+            EmissaryNode.ipa
+            EmissaryNode.ipa.sha256
+      # --- Worker Bee edition (public version). Built after EMISSARY's app is packaged and uploaded,
+      # --- and allowed to fail without affecting it.
+      - name: Build the Worker Bee edition (unsigned)
+        continue-on-error: true
+        run: |
+          xcodebuild -project EmissaryNode.xcodeproj -scheme WorkerBeeNode -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build-wb \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tail -30
+          rm -rf Payload && mkdir -p Payload && cp -R build-wb/Build/Products/Release-iphoneos/WorkerBeeNode.app Payload/
+          zip -qry WorkerBee.ipa Payload
+          shasum -a 256 WorkerBee.ipa | tee WorkerBee.ipa.sha256
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: WorkerBee-ipa
+          if-no-files-found: ignore
+          path: |
+            WorkerBee.ipa
+            WorkerBee.ipa.sha256

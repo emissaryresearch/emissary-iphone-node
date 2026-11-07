@@ -27,3 +27,24 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIApplicationSupportsIndirectInputEvents: true
         ITSAppUsesNonExemptEncryption: false
+  WorkerBeeNode:
+    type: application
+    platform: iOS
+    sources: [EmissaryNode]
+    dependencies:
+      - framework: llama.cpp/build-apple/llama.xcframework
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.workerbee.node
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: WORKERBEE
+    info:
+      path: WorkerBeeNode/Info.plist
+      properties:
+        CFBundleDisplayName: Worker Bee
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIApplicationSupportsIndirectInputEvents: true
+        ITSAppUsesNonExemptEncryption: false
