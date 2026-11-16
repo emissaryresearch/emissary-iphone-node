@@ -70,8 +70,31 @@ struct SupervisorClient {
 
     func heartbeat(busy: Bool) async -> [String: Any] {
         guard let id = nodeId else { return [:] }
-        return await call("POST", "/api/compute/nodes/\(id)/heartbeat",
-                          ["health": ["healthy": true, "worker_version": workerVersion, "busy": busy]])
+        // Device vitals so the Supervisor can watch this phone and protect it.
+        let dev = UIDevice.current
+        dev.isBatteryMonitoringEnabled = true
+        var health: [String: Any] = ["worker_version": workerVersion, "busy": busy]
+        let lvl = dev.batteryLevel
+        let battery = lvl >= 0 ? Int((lvl * 100).rounded()) : -1
+        if battery >= 0 { health["battery_pct"] = battery }
+        let charging = (dev.batteryState == .charging || dev.batteryState == .full)
+        health["charging"] = charging
+        let thermal: String
+        switch ProcessInfo.processInfo.thermalState {
+        case .nominal: thermal = "nominal"
+        case .fair: thermal = "fair"
+        case .serious: thermal = "serious"
+        case .critical: thermal = "critical"
+        @unknown default: thermal = "unknown"
+        }
+        health["thermal"] = thermal
+        // Protect the phone: when it runs hot (serious/critical) or is critically low on battery
+        // and unplugged, report unhealthy so the Supervisor stops sending it research until it
+        // cools or charges. It rejoins automatically on the next healthy heartbeat.
+        let runningHot = (thermal == "serious" || thermal == "critical")
+        let lowBattery = (battery >= 0 && battery <= 10 && !charging)
+        health["healthy"] = !runningHot && !lowBattery
+        return await call("POST", "/api/compute/nodes/\(id)/heartbeat", ["health": health])
     }
 
     func reportCapabilities(_ caps: [String: Any]) async {
